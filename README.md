@@ -22,9 +22,17 @@
 
 ## 실행 방법
 
+로컬 실행:
+
 ```bash
-streamlit run app.py
+python app.py
 ```
+
+Vercel 배포:
+
+1. 이 GitHub 저장소를 Vercel 프로젝트로 import합니다.
+2. Framework Preset은 `Flask` 또는 자동 감지를 사용합니다.
+3. 배포하면 `app.py`의 Flask 앱을 기준으로 자동 배포됩니다.
 
 ## 기능
 
@@ -47,3 +55,6 @@ streamlit run app.py
 
 이 서비스는 원유가격만을 간접 지표로 사용합니다. 실제 항공권 구매 결정은 항공사 정책, 환율, 좌석 상황, 발권 시점 등 다른 요소도 함께 고려해야 합니다.
 
+## Vercel 메모
+
+Vercel의 Python 런타임은 Flask 같은 WSGI 앱을 지원하고, 저장소의 `app.py`에 있는 `app` 객체를 엔트리포인트로 읽을 수 있습니다. Git 저장소를 연결하면 브랜치 push마다 자동 배포가 가능합니다.
