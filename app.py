@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+import calendar
 from functools import lru_cache
 from math import asin, cos, radians, sin, sqrt
 from pathlib import Path
@@ -193,6 +194,93 @@ def decision_from_change(percent_change):
     }
 
 
+def status_from_change(percent_change):
+    if percent_change is None or pd.isna(percent_change):
+        return "neutral"
+    if percent_change > 3:
+        return "buy"
+    if percent_change < -3:
+        return "wait"
+    return "neutral"
+
+
+def signal_for_date(df: pd.DataFrame, column: str, target_day: date, window_days: int):
+    recent_start = target_day - timedelta(days=window_days - 1)
+    previous_end = recent_start - timedelta(days=1)
+    previous_start = previous_end - timedelta(days=window_days - 1)
+
+    previous_avg, _ = summarize_period(df, column, previous_start, previous_end)
+    recent_avg, _ = summarize_period(df, column, recent_start, target_day)
+
+    if previous_avg is None or recent_avg is None or previous_avg == 0:
+        return "neutral"
+
+    percent_change = (recent_avg - previous_avg) / previous_avg * 100
+    return status_from_change(percent_change)
+
+
+def build_calendar_html(df: pd.DataFrame, column: str, anchor_day: date, window_days: int, selected_day: date) -> str:
+    month_start = date(anchor_day.year, anchor_day.month, 1)
+    last_day = calendar.monthrange(anchor_day.year, anchor_day.month)[1]
+    month_end = date(anchor_day.year, anchor_day.month, last_day)
+    month_calendar = calendar.Calendar(firstweekday=6)
+    weekday_labels = ["일", "월", "화", "수", "목", "금", "토"]
+    weeks = month_calendar.monthdatescalendar(anchor_day.year, anchor_day.month)
+
+    cells = []
+    for week in weeks:
+        week_cells = []
+        for day in week:
+            if day.month != anchor_day.month:
+                week_cells.append('<div class="cal-cell empty"></div>')
+                continue
+
+            if day < df["date"].dt.date.min() or day > df["date"].dt.date.max():
+                status = "neutral"
+            else:
+                status = signal_for_date(df, column, day, window_days)
+
+            classes = f"cal-cell status-{status}"
+            if day == selected_day:
+                classes += " selected-day"
+            if day == date.today():
+                classes += " today-day"
+
+            week_cells.append(
+                f"""
+                <div class="{classes}">
+                  <div class="cal-day">{day.day}</div>
+                  <div class="cal-dot"></div>
+                </div>
+                """
+            )
+        cells.append(f'<div class="cal-week">{"".join(week_cells)}</div>')
+
+    weekday_html = "".join(f'<div class="cal-weekday">{label}</div>' for label in weekday_labels)
+
+    return f"""
+    <div class="calendar-wrap">
+      <div class="calendar-head">
+        <div>
+          <div class="calendar-title">달력으로 보는 발권 신호</div>
+          <div class="calendar-sub">초록은 "그날 샀으면 좋았던 날", 빨강은 "그날 샀으면 손해였던 날"입니다.</div>
+        </div>
+        <div class="calendar-badge">{anchor_day.strftime("%Y년 %m월")}</div>
+      </div>
+      <div class="calendar-grid">
+        {weekday_html}
+        {"".join(cells)}
+      </div>
+      <div class="calendar-legend">
+        <span><span class="legend-dot legend-buy"></span>사도 좋았음</span>
+        <span><span class="legend-dot legend-wait"></span>사면 손해였음</span>
+        <span><span class="legend-dot legend-neutral"></span>판단 보류</span>
+        <span><span class="legend-dot legend-today"></span>기준일</span>
+      </div>
+    </div>
+    """
+
+
 HTML_TEMPLATE = """
 <!doctype html>
 <html lang="ko">
@@ -358,6 +446,139 @@ HTML_TEMPLATE = """
       color: var(--ink-soft);
       font-size: 0.92rem;
     }
+    .calendar-wrap {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 1rem;
+      padding: 1rem;
+      box-shadow: 0 10px 28px rgba(16, 37, 66, 0.04);
+    }
+    .calendar-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      align-items: center;
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+    }
+    .calendar-title {
+      font-size: 1.05rem;
+      font-weight: 900;
+      color: var(--ink);
+    }
+    .calendar-sub {
+      color: var(--ink-soft);
+      font-size: 0.92rem;
+      margin-top: 0.2rem;
+    }
+    .calendar-badge {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 0.4rem 0.85rem;
+      font-weight: 800;
+      color: var(--ink);
+      white-space: nowrap;
+    }
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 0.4rem;
+    }
+    .cal-weekday {
+      text-align: center;
+      font-size: 0.82rem;
+      font-weight: 800;
+      color: var(--ink-soft);
+      padding: 0.15rem 0;
+    }
+    .cal-cell {
+      min-height: 5.4rem;
+      border-radius: 0.85rem;
+      border: 1px solid var(--line);
+      background: #fbfdff;
+      padding: 0.45rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .cal-cell.empty {
+      background: transparent;
+      border: 1px dashed rgba(223, 231, 241, 0.75);
+    }
+    .cal-day {
+      font-weight: 900;
+      font-size: 0.92rem;
+    }
+    .cal-dot {
+      width: 1rem;
+      height: 1rem;
+      border-radius: 999px;
+      margin-top: 1.1rem;
+    }
+    .status-buy {
+      background: rgba(74, 222, 128, 0.12);
+      border-color: rgba(74, 222, 128, 0.45);
+    }
+    .status-buy .cal-dot {
+      background: #22c55e;
+    }
+    .status-wait {
+      background: rgba(248, 113, 113, 0.12);
+      border-color: rgba(248, 113, 113, 0.45);
+    }
+    .status-wait .cal-dot {
+      background: #ef4444;
+    }
+    .status-neutral {
+      background: rgba(148, 163, 184, 0.12);
+      border-color: rgba(148, 163, 184, 0.35);
+    }
+    .status-neutral .cal-dot {
+      background: #94a3b8;
+    }
+    .selected-day {
+      box-shadow: inset 0 0 0 2px var(--accent);
+    }
+    .today-day::after {
+      content: "오늘";
+      position: absolute;
+      right: 0.45rem;
+      top: 0.35rem;
+      font-size: 0.68rem;
+      font-weight: 900;
+      color: var(--accent);
+    }
+    .calendar-legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.9rem 1.2rem;
+      margin-top: 0.85rem;
+      color: var(--ink-soft);
+      font-size: 0.9rem;
+    }
+    .calendar-legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+    }
+    .legend-dot {
+      width: 0.7rem;
+      height: 0.7rem;
+      border-radius: 999px;
+      display: inline-block;
+    }
+    .legend-buy {
+      background: #22c55e;
+    }
+    .legend-wait {
+      background: #ef4444;
+    }
+    .legend-neutral {
+      background: #94a3b8;
+    }
+    .legend-today {
+      background: var(--accent);
+    }
   </style>
 </head>
 <body>
@@ -414,6 +635,10 @@ HTML_TEMPLATE = """
           <button type="submit" class="btn btn-primary btn-lg" style="background: var(--accent); border-color: var(--accent);">결과 보기</button>
         </div>
       </form>
+    </section>
+
+    <section class="mb-4">
+      {{ calendar_html|safe }}
     </section>
 
     <section class="mb-4">
@@ -597,6 +822,7 @@ def index():
     destination, distance_km, distance_band = destination_info(selected_destination)
 
     fx_rate = df["usd_krw"].dropna().iloc[-1] if not df["usd_krw"].dropna().empty else None
+    calendar_html = build_calendar_html(df, "all_krw", recent_end, selected_window_days, recent_end)
 
     line_df = df.melt(
         id_vars=["date", "usd_krw"],
@@ -657,6 +883,7 @@ def index():
         fx_rate=money(fx_rate),
         change_sentence=change_sentence,
         short_takeaway=short_takeaway,
+        calendar_html=calendar_html,
         line_chart=line_chart,
         bar_chart=bar_chart,
     )
@@ -664,4 +891,3 @@ def index():
 
 if __name__ == "__main__":
     app.run(debug=True)
-
