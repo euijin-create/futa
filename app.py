@@ -322,53 +322,123 @@ HTML_TEMPLATE = """
       color: white;
       border-radius: 1.25rem;
       box-shadow: 0 16px 40px rgba(16, 37, 66, 0.16);
+      overflow: hidden;
+      position: relative;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at top right, rgba(255,255,255,0.16), transparent 28%), radial-gradient(circle at left bottom, rgba(255,255,255,0.08), transparent 24%);
+      pointer-events: none;
+    }
+    .hero > .row {
+      position: relative;
+      z-index: 1;
     }
     .hero h1 {
-      font-size: clamp(1.25rem, 2vw, 1.65rem);
+      font-size: clamp(1.18rem, 1.8vw, 1.45rem);
       font-weight: 900;
-      line-height: 1.25;
-      margin-bottom: 0.65rem;
+      line-height: 1.28;
+      margin-bottom: 0.45rem;
+      letter-spacing: -0.03em;
     }
     .hero p {
-      font-size: 0.98rem;
+      font-size: 0.9rem;
       line-height: 1.6;
       opacity: 0.96;
+      max-width: 38rem;
     }
     .hero-brand {
-      display: inline-flex;
+      display: flex;
       align-items: center;
-      gap: 0.65rem;
-      margin-bottom: 0.9rem;
+      gap: 1rem;
+      margin-bottom: 0.8rem;
+      flex-wrap: wrap;
     }
-    .hero-brand-mark {
-      width: 3.3rem;
-      height: 3.3rem;
-      border-radius: 1rem;
-      background: rgba(255, 255, 255, 0.16);
+    .hero-card {
+      width: min(100%, 28rem);
+      background: rgba(255, 255, 255, 0.14);
       border: 1px solid rgba(255, 255, 255, 0.22);
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 1.9rem;
-      font-weight: 900;
-      line-height: 1;
+      border-radius: 1.4rem;
+      padding: 1rem 1rem 0.9rem;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
+      backdrop-filter: blur(8px);
     }
+    .hero-illustration {
+      height: 9.2rem;
+      border-radius: 1.1rem;
+      background:
+        radial-gradient(circle at 30% 25%, rgba(255,255,255,0.95) 0 7%, transparent 8%),
+        radial-gradient(circle at 72% 22%, rgba(255,255,255,0.92) 0 5%, transparent 6%),
+        linear-gradient(180deg, #dff2ff 0%, #b9dbff 58%, #97c7ff 100%);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero-illustration::before {
+      content: "";
+      position: absolute;
+      left: 10%;
+      top: 16%;
+      width: 42%;
+      height: 56%;
+      border-radius: 999px;
+      background: radial-gradient(circle at 35% 35%, #fff 0 11%, #f6fbff 12% 18%, transparent 19%), linear-gradient(135deg, #2d8cff 0%, #76b7ff 100%);
+      box-shadow: 0 10px 18px rgba(33, 83, 149, 0.2);
+      transform: rotate(-8deg);
+    }
+    .hero-illustration::after {
+      content: "?";
+      position: absolute;
+      right: 12%;
+      top: 24%;
+      font-size: 2.25rem;
+      color: #ff7b3a;
+      text-shadow: 0 2px 0 rgba(255,255,255,0.6);
+      transform: rotate(12deg);
+    }
+    .hero-signal {
+      position: absolute;
+      right: 12%;
+      bottom: 14%;
+      width: 34%;
+      height: 42%;
+      border-radius: 0.95rem;
+      background: rgba(255,255,255,0.6);
+      border: 1px solid rgba(255,255,255,0.65);
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      gap: 0.35rem;
+      padding: 0.35rem 0.5rem;
+    }
+    .hero-signal span {
+      width: 0.42rem;
+      border-radius: 999px 999px 0 0;
+      background: linear-gradient(180deg, #ff9933, #f46d1d);
+      display: inline-block;
+    }
+    .hero-signal span:nth-child(1) { height: 1rem; }
+    .hero-signal span:nth-child(2) { height: 1.7rem; }
+    .hero-signal span:nth-child(3) { height: 2.35rem; }
+    .hero-signal span:nth-child(4) { height: 1.45rem; }
+    .hero-signal span:nth-child(5) { height: 3rem; }
     .hero-brand-text {
       display: flex;
       flex-direction: column;
     }
     .hero-brand-name {
-      font-size: clamp(2rem, 4vw, 3.25rem);
+      font-size: clamp(2.2rem, 4.5vw, 3.6rem);
       font-weight: 900;
       line-height: 0.95;
-      letter-spacing: -0.06em;
+      letter-spacing: -0.08em;
     }
     .hero-brand-sub {
-      font-size: 0.78rem;
+      font-size: 0.74rem;
       font-weight: 800;
-      letter-spacing: 0.12em;
+      letter-spacing: 0.16em;
       text-transform: uppercase;
-      color: rgba(255, 255, 255, 0.72);
+      color: rgba(255, 255, 255, 0.74);
       margin-top: 0.15rem;
     }
     .panel {
@@ -497,16 +567,22 @@ HTML_TEMPLATE = """
       <div class="row align-items-center g-3">
         <div class="col-lg-8">
           <div class="hero-brand">
-            <div class="hero-brand-mark">유</div>
+            <div class="hero-card">
+              <div class="hero-illustration">
+                <div class="hero-signal">
+                  <span></span><span></span><span></span><span></span><span></span>
+                </div>
+              </div>
+            </div>
             <div class="hero-brand-text">
-              <div class="hero-brand-name">유타</div>
+              <div class="hero-brand-name">??</div>
               <div class="hero-brand-sub">futa</div>
             </div>
           </div>
-          <h1>원유가격 기반 일본행 발권 타이밍 참고 서비스</h1>
+          <h1>???? ?? ??? ?? ??? ?? ???</h1>
           <p class="mb-0">
-            항공권 가격을 예측하지 않고, 오피넷 국제 원유가격 추이와 환율을 적용한 원화 기준으로
-            일본행 항공권을 지금 살지, 조금 더 기다릴지 아주 단순하게 참고하는 도구입니다.
+            ??? ??? ???? ??, ??? ?? ???? ??? ??? ??? ?? ????
+            ??? ???? ?? ??, ?? ? ???? ?? ???? ???? ?????.
           </p>
         </div>
         <div class="col-lg-4">
