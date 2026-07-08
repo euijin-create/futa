@@ -3,6 +3,7 @@ import calendar
 from functools import lru_cache
 from math import asin, cos, radians, sin, sqrt
 from pathlib import Path
+import re
 
 import numpy as np
 import pandas as pd
@@ -13,11 +14,52 @@ from flask import Flask, render_template_string, request
 app = Flask(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
-OIL_DATA_PATH = BASE_DIR / "data" / "oil_prices.csv"
+OPINET_DATA_PATH = BASE_DIR / "data" / "opinet_full.csv"
+OPINET_RAW_PATH = BASE_DIR / "data" / "opinet_raw.csv"
 FX_DATA_PATH = BASE_DIR / "data" / "usd_krw.csv"
 
 OIL_COLUMNS = ["dubai", "brent", "wti"]
 SEOUL_COORDS = (37.5665, 126.9780)
+
+
+def _read_csv_with_fallback(path: Path) -> pd.DataFrame:
+    last_error = None
+    for encoding in ("utf-8-sig", "utf-8", "cp949", "euc-kr"):
+        try:
+            return pd.read_csv(path, encoding=encoding)
+        except Exception as exc:
+            last_error = exc
+    raise ValueError(f"원유 CSV를 읽지 못했습니다: {path.name} ({last_error})")
+
+
+def _parse_opinet_date(value):
+    if pd.isna(value):
+        return pd.NaT
+
+    text = str(value).strip()
+    if not text:
+        return pd.NaT
+
+    text = (
+        text.replace("년", "-")
+        .replace("월", "-")
+        .replace("일", "")
+        .replace(".", "-")
+        .replace("/", "-")
+        .replace(" ", "")
+    )
+    text = text.rstrip("-")
+
+    if re.fullmatch(r"\d{4}-\d{1,2}-\d{1,2}", text):
+        return pd.to_datetime(text, format="%Y-%m-%d", errors="coerce")
+    if re.fullmatch(r"\d{2}-\d{1,2}-\d{1,2}", text):
+        return pd.to_datetime(text, format="%y-%m-%d", errors="coerce")
+    if re.fullmatch(r"\d{8}", text):
+        return pd.to_datetime(text, format="%Y%m%d", errors="coerce")
+    if re.fullmatch(r"\d{6}", text):
+        return pd.to_datetime(text, format="%y%m%d", errors="coerce")
+
+    return pd.to_datetime(text, errors="coerce")
 
 JAPAN_DESTINATIONS = {
     "tokyo": {"label": "도쿄", "sub": "하네다 / 나리타", "lat": 35.6762, "lon": 139.6503},
@@ -31,16 +73,54 @@ JAPAN_DESTINATIONS = {
 
 @lru_cache(maxsize=1)
 def load_oil_data() -> pd.DataFrame:
-    df = pd.read_csv(OIL_DATA_PATH)
-    df.columns = [col.strip().lower() for col in df.columns]
-    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    source_path = next(
+        (
+            path
+            for path in (OPINET_DATA_PATH, OPINET_RAW_PATH, BASE_DIR / "data" / "oil_prices.csv")
+            if path.exists()
+        ),
+        None,
+    )
+    if source_path is None:
+        raise FileNotFoundError("opinet_full.csv 파일을 찾지 못했습니다. normalize_opinet.py를 먼저 실행해 주세요.")
+
+    df = _read_csv_with_fallback(source_path)
+    df.columns = [str(col).strip() for col in df.columns]
+
+    date_col = next(
+        (
+            col
+            for col in df.columns
+            if col.lower() == "date" or "기간" in col or "날짜" in col
+        ),
+        df.columns[0],
+    )
+    oil_col_map = {}
+    for col in df.columns:
+        normalized = str(col).strip().lower()
+        if normalized in OIL_COLUMNS:
+            oil_col_map[col] = normalized
+
+    renamed = {date_col: "date"}
+    renamed.update(oil_col_map)
+    df = df.rename(columns=renamed)
+
+    if "date" not in df.columns:
+        raise ValueError("원유 CSV에서 날짜 열을 찾지 못했습니다.")
+
+    for col in OIL_COLUMNS:
+        if col not in df.columns:
+            raise ValueError(f"원유 CSV에서 {col} 열을 찾지 못했습니다.")
+
+    df["date"] = df["date"].map(_parse_opinet_date)
 
     for col in OIL_COLUMNS:
         df[col] = pd.to_numeric(df[col], errors="coerce")
         df.loc[df[col] == 0.0, col] = np.nan
 
+    df = df.dropna(subset=["date"]).sort_values("date").drop_duplicates(subset=["date"], keep="last")
     df["all"] = df[OIL_COLUMNS].mean(axis=1, skipna=True)
-    return df.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
+    return df.reset_index(drop=True)
 
 
 @lru_cache(maxsize=1)
@@ -225,6 +305,25 @@ def signal_for_date(df: pd.DataFrame, column: str, target_day: date, window_days
     return status_from_change(percent_change)
 
 
+def spillover_signal_for_date(df: pd.DataFrame, column: str, target_day: date, window_days: int, max_shift_days: int = 7):
+    """
+    Spillover dates that fall outside the selected month can land on the data edges,
+    which would otherwise show up as neutral. For display purposes, borrow the closest
+    calculable signal so the calendar keeps its color coding.
+    """
+    status = signal_for_date(df, column, target_day, window_days)
+    if status != "neutral":
+        return status
+
+    for offset in range(1, max_shift_days + 1):
+        for shifted_day in (target_day - timedelta(days=offset), target_day + timedelta(days=offset)):
+            shifted_status = signal_for_date(df, column, shifted_day, window_days)
+            if shifted_status != "neutral":
+                return shifted_status
+
+    return status
+
+
 def parse_calendar_month(value: str | None, fallback: date) -> date:
     if not value:
         return fallback
@@ -260,8 +359,8 @@ def build_calendar_html(
     cells = []
     for week in weeks:
         for day in week:
-            if day < df["date"].dt.date.min() or day > df["date"].dt.date.max():
-                status = "neutral"
+            if day.month != view_month.month:
+                status = spillover_signal_for_date(df, column, day, window_days)
             else:
                 status = signal_for_date(df, column, day, window_days)
 
@@ -632,11 +731,6 @@ HTML_TEMPLATE = """
     }
     .status-neutral .cal-bubble {
       background: #94a3b8;
-    }
-    .outside-month .cal-bubble {
-      background: #d6dde6;
-      color: #8a97a7;
-      box-shadow: none;
     }
     .outside-month {
       background: #fcfdff;
