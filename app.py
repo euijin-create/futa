@@ -849,15 +849,15 @@ def index():
     if selected_window_days not in {7, 14, 30, 60}:
         selected_window_days = default_window_days
 
-    calendar_month = parse_calendar_month(
-        request.args.get("calendar_month"),
-        date(recent_end.year, recent_end.month, 1),
-    )
-
     recent_end = min(as_of, max_date)
     recent_start = max(min_date, recent_end - timedelta(days=selected_window_days - 1))
     previous_end = max(min_date, recent_start - timedelta(days=1))
     previous_start = max(min_date, previous_end - timedelta(days=selected_window_days - 1))
+
+    calendar_month = parse_calendar_month(
+        request.args.get("calendar_month"),
+        date(recent_end.year, recent_end.month, 1),
+    )
 
     previous_avg, previous_period = summarize_period(df, "all_krw", previous_start, previous_end)
     recent_avg, recent_period = summarize_period(df, "all_krw", recent_start, recent_end)
