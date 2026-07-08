@@ -204,6 +204,12 @@ def status_from_change(percent_change):
     return "neutral"
 
 
+def shift_month(year: int, month: int, delta: int) -> tuple[int, int]:
+    index = year * 12 + (month - 1) + delta
+    new_year, new_month_index = divmod(index, 12)
+    return new_year, new_month_index + 1
+
+
 def signal_for_date(df: pd.DataFrame, column: str, target_day: date, window_days: int):
     recent_start = target_day - timedelta(days=window_days - 1)
     previous_end = recent_start - timedelta(days=1)
@@ -219,19 +225,43 @@ def signal_for_date(df: pd.DataFrame, column: str, target_day: date, window_days
     return status_from_change(percent_change)
 
 
-def build_calendar_html(df: pd.DataFrame, column: str, anchor_day: date, window_days: int, selected_day: date) -> str:
-    month_start = date(anchor_day.year, anchor_day.month, 1)
-    last_day = calendar.monthrange(anchor_day.year, anchor_day.month)[1]
-    month_end = date(anchor_day.year, anchor_day.month, last_day)
+def parse_calendar_month(value: str | None, fallback: date) -> date:
+    if not value:
+        return fallback
+    try:
+        year_str, month_str = value.split("-")
+        year = int(year_str)
+        month = int(month_str)
+        return date(year, month, 1)
+    except Exception:
+        return fallback
+
+
+def build_calendar_html(
+    df: pd.DataFrame,
+    column: str,
+    view_month: date,
+    window_days: int,
+    selected_day: date,
+    base_params: dict[str, str],
+) -> str:
     month_calendar = calendar.Calendar(firstweekday=6)
     weekday_labels = ["일", "월", "화", "수", "목", "금", "토"]
-    weeks = month_calendar.monthdatescalendar(anchor_day.year, anchor_day.month)
+    weeks = month_calendar.monthdatescalendar(view_month.year, view_month.month)
+
+    prev_year, prev_month = shift_month(view_month.year, view_month.month, -1)
+    next_year, next_month = shift_month(view_month.year, view_month.month, 1)
+
+    prev_params = base_params | {"calendar_month": f"{prev_year}-{prev_month:02d}"}
+    next_params = base_params | {"calendar_month": f"{next_year}-{next_month:02d}"}
+    prev_query = "&".join(f"{k}={v}" for k, v in prev_params.items())
+    next_query = "&".join(f"{k}={v}" for k, v in next_params.items())
 
     cells = []
     for week in weeks:
         week_cells = []
         for day in week:
-            if day.month != anchor_day.month:
+            if day.month != view_month.month:
                 week_cells.append('<div class="cal-cell empty"></div>')
                 continue
 
@@ -249,8 +279,7 @@ def build_calendar_html(df: pd.DataFrame, column: str, anchor_day: date, window_
             week_cells.append(
                 f"""
                 <div class="{classes}">
-                  <div class="cal-day">{day.day}</div>
-                  <div class="cal-dot"></div>
+                  <div class="cal-bubble">{day.day}</div>
                 </div>
                 """
             )
@@ -263,9 +292,13 @@ def build_calendar_html(df: pd.DataFrame, column: str, anchor_day: date, window_
       <div class="calendar-head">
         <div>
           <div class="calendar-title">달력으로 보는 발권 신호</div>
-          <div class="calendar-sub">초록은 "그날 샀으면 좋았던 날", 빨강은 "그날 샀으면 손해였던 날"입니다.</div>
+          <div class="calendar-sub">초록 원은 "그날 샀으면 좋았던 날", 빨강 원은 "그날 샀으면 손해였던 날"입니다.</div>
         </div>
-        <div class="calendar-badge">{anchor_day.strftime("%Y년 %m월")}</div>
+        <div class="calendar-nav">
+          <a class="calendar-nav-btn" href="?{prev_query}">이전 달</a>
+          <div class="calendar-badge">{view_month.strftime("%Y년 %m월")}</div>
+          <a class="calendar-nav-btn" href="?{next_query}">다음 달</a>
+        </div>
       </div>
       <div class="calendar-grid">
         {weekday_html}
@@ -480,10 +513,33 @@ HTML_TEMPLATE = """
       color: var(--ink);
       white-space: nowrap;
     }
+    .calendar-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .calendar-nav-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.42rem 0.8rem;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      text-decoration: none;
+      font-size: 0.88rem;
+      font-weight: 800;
+    }
+    .calendar-nav-btn:hover {
+      background: var(--panel);
+      color: var(--ink);
+    }
     .calendar-grid {
       display: grid;
       grid-template-columns: repeat(7, minmax(0, 1fr));
-      gap: 0.4rem;
+      gap: 0.45rem;
     }
     .cal-weekday {
       text-align: center;
@@ -493,47 +549,52 @@ HTML_TEMPLATE = """
       padding: 0.15rem 0;
     }
     .cal-cell {
-      min-height: 5.4rem;
+      min-height: 5.8rem;
       border-radius: 0.85rem;
       border: 1px solid var(--line);
       background: #fbfdff;
       padding: 0.45rem;
       position: relative;
       overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
     }
     .cal-cell.empty {
       background: transparent;
       border: 1px dashed rgba(223, 231, 241, 0.75);
     }
-    .cal-day {
-      font-weight: 900;
-      font-size: 0.92rem;
-    }
-    .cal-dot {
-      width: 1rem;
-      height: 1rem;
+    .cal-bubble {
+      width: 2.65rem;
+      height: 2.65rem;
       border-radius: 999px;
-      margin-top: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.95rem;
+      font-weight: 900;
+      color: white;
+      box-shadow: 0 8px 16px rgba(16, 37, 66, 0.12);
     }
     .status-buy {
       background: rgba(74, 222, 128, 0.12);
       border-color: rgba(74, 222, 128, 0.45);
     }
-    .status-buy .cal-dot {
+    .status-buy .cal-bubble {
       background: #22c55e;
     }
     .status-wait {
       background: rgba(248, 113, 113, 0.12);
       border-color: rgba(248, 113, 113, 0.45);
     }
-    .status-wait .cal-dot {
+    .status-wait .cal-bubble {
       background: #ef4444;
     }
     .status-neutral {
       background: rgba(148, 163, 184, 0.12);
       border-color: rgba(148, 163, 184, 0.35);
     }
-    .status-neutral .cal-dot {
+    .status-neutral .cal-bubble {
       background: #94a3b8;
     }
     .selected-day {
@@ -788,6 +849,11 @@ def index():
     if selected_window_days not in {7, 14, 30, 60}:
         selected_window_days = default_window_days
 
+    calendar_month = parse_calendar_month(
+        request.args.get("calendar_month"),
+        date(recent_end.year, recent_end.month, 1),
+    )
+
     recent_end = min(as_of, max_date)
     recent_start = max(min_date, recent_end - timedelta(days=selected_window_days - 1))
     previous_end = max(min_date, recent_start - timedelta(days=1))
@@ -822,7 +888,19 @@ def index():
     destination, distance_km, distance_band = destination_info(selected_destination)
 
     fx_rate = df["usd_krw"].dropna().iloc[-1] if not df["usd_krw"].dropna().empty else None
-    calendar_html = build_calendar_html(df, "all_krw", recent_end, selected_window_days, recent_end)
+    base_params = {
+        "destination": selected_destination,
+        "as_of": as_of.isoformat(),
+        "window_days": str(selected_window_days),
+    }
+    calendar_html = build_calendar_html(
+        df=df,
+        column="all_krw",
+        view_month=calendar_month,
+        window_days=selected_window_days,
+        selected_day=recent_end,
+        base_params=base_params,
+    )
 
     line_df = df.melt(
         id_vars=["date", "usd_krw"],
