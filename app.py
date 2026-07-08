@@ -45,13 +45,31 @@ def load_oil_data() -> pd.DataFrame:
 @lru_cache(maxsize=1)
 def load_fx_data() -> pd.DataFrame:
     df = pd.read_csv(FX_DATA_PATH)
-    df.columns = [col.strip() for col in df.columns]
+    df.columns = [str(col).strip() for col in df.columns]
 
-    date_col = next((c for c in df.columns if "일자" in c or c.lower() == "date"), None)
-    rate_col = next((c for c in df.columns if "달러" in c or "usd" in c.lower()), None)
+    date_col = next(
+        (
+            c
+            for c in df.columns
+            if c.lower() == "date" or "날짜" in c or "일자" in c
+        ),
+        None,
+    )
+    rate_col = next(
+        (
+            c
+            for c in df.columns
+            if "종가" in c or "달러" in c or "환율" in c or "usd" in c.lower()
+        ),
+        None,
+    )
 
     if date_col is None or rate_col is None:
-        raise ValueError("환율 CSV에서 날짜/환율 컬럼을 찾을 수 없습니다.")
+        if len(df.columns) >= 2:
+            date_col = df.columns[0]
+            rate_col = df.columns[1]
+        else:
+            raise ValueError("환율 CSV에서 날짜와 환율 컬럼을 찾을 수 없습니다.")
 
     fx = df[[date_col, rate_col]].rename(columns={date_col: "date", rate_col: "usd_krw"})
     fx["date"] = pd.to_datetime(fx["date"], errors="coerce")
@@ -77,8 +95,7 @@ def load_merged_data() -> pd.DataFrame:
         direction="backward",
     )
 
-    if merged["usd_krw"].isna().any():
-        merged["usd_krw"] = merged["usd_krw"].ffill().bfill()
+    merged["usd_krw"] = merged["usd_krw"].ffill().bfill()
 
     for col in OIL_COLUMNS + ["all"]:
         merged[f"{col}_krw"] = merged[col] * merged["usd_krw"]
@@ -127,19 +144,19 @@ def summarize_period(df: pd.DataFrame, column: str, start_date: date, end_date: 
     return float(period[column].mean()), period
 
 
-def money(value: float | None):
+def money(value: float | None) -> str:
     if value is None or pd.isna(value):
         return "-"
     return f"₩{value:,.0f}"
 
 
-def rate(value: float | None):
+def number(value: float | None) -> str:
     if value is None or pd.isna(value):
         return "-"
-    return f"{value:,.0f}원"
+    return f"{value:,.0f}"
 
 
-def pct(value: float | None):
+def pct(value: float | None) -> str:
     if value is None or pd.isna(value):
         return "-"
     sign = "+" if value > 0 else ""
@@ -521,7 +538,11 @@ HTML_TEMPLATE = """
 
 @app.route("/")
 def index():
-    df = load_merged_data()
+    try:
+        df = load_merged_data()
+    except Exception as exc:
+        return f"데이터를 불러오는 중 오류가 발생했습니다: {exc}", 500
+
     if df.empty:
         return "원유가격 데이터가 비어 있습니다.", 500
 
@@ -547,9 +568,8 @@ def index():
     previous_end = max(min_date, recent_start - timedelta(days=1))
     previous_start = max(min_date, previous_end - timedelta(days=selected_window_days - 1))
 
-    selected_col = "all_krw"
-    previous_avg, previous_period = summarize_period(df, selected_col, previous_start, previous_end)
-    recent_avg, recent_period = summarize_period(df, selected_col, recent_start, recent_end)
+    previous_avg, previous_period = summarize_period(df, "all_krw", previous_start, previous_end)
+    recent_avg, recent_period = summarize_period(df, "all_krw", recent_start, recent_end)
 
     no_data_warning = None
     if previous_period.empty or recent_period.empty:
@@ -576,9 +596,7 @@ def index():
 
     destination, distance_km, distance_band = destination_info(selected_destination)
 
-    fx_rate = None
-    if not df["usd_krw"].dropna().empty:
-        fx_rate = float(df["usd_krw"].dropna().iloc[-1])
+    fx_rate = df["usd_krw"].dropna().iloc[-1] if not df["usd_krw"].dropna().empty else None
 
     line_df = df.melt(
         id_vars=["date", "usd_krw"],
@@ -634,9 +652,9 @@ def index():
         percent_display=pct(percent_change),
         destination_label=destination["label"],
         destination_sub=destination["sub"],
-        distance_km=f"{distance_km:.0f}",
+        distance_km=number(distance_km),
         distance_band=distance_band,
-        fx_rate=rate(fx_rate),
+        fx_rate=money(fx_rate),
         change_sentence=change_sentence,
         short_takeaway=short_takeaway,
         line_chart=line_chart,
