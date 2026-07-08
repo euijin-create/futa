@@ -259,45 +259,51 @@ def build_calendar_html(
 
     cells = []
     for week in weeks:
-        week_cells = []
         for day in week:
-            if day.month != view_month.month:
-                week_cells.append('<div class="cal-cell empty"></div>')
-                continue
-
             if day < df["date"].dt.date.min() or day > df["date"].dt.date.max():
                 status = "neutral"
             else:
                 status = signal_for_date(df, column, day, window_days)
 
             classes = f"cal-cell status-{status}"
+            if day.month != view_month.month:
+                classes += " outside-month"
             if day == selected_day:
                 classes += " selected-day"
             if day == date.today():
                 classes += " today-day"
 
-            week_cells.append(
+            cells.append(
                 f"""
                 <div class="{classes}">
                   <div class="cal-bubble">{day.day}</div>
                 </div>
                 """
             )
-        cells.append(f'<div class="cal-week">{"".join(week_cells)}</div>')
 
     weekday_html = "".join(f'<div class="cal-weekday">{label}</div>' for label in weekday_labels)
+    month_name = f"{view_month.month}월"
+    year_name = f"{view_month.year}"
+    start_weekday = weekday_labels[(view_month.weekday() + 1) % 7]
 
     return f"""
     <div class="calendar-wrap">
       <div class="calendar-head">
-        <div>
-          <div class="calendar-title">달력으로 보는 발권 신호</div>
+        <div class="calendar-hero">
+          <div class="calendar-month-label">{month_name}</div>
+          <div class="calendar-year-label">{year_name}</div>
           <div class="calendar-sub">초록 원은 "그날 샀으면 좋았던 날", 빨강 원은 "그날 샀으면 손해였던 날"입니다.</div>
         </div>
-        <div class="calendar-nav">
-          <a class="calendar-nav-btn" href="?{prev_query}">이전 달</a>
-          <div class="calendar-badge">{view_month.strftime("%Y년 %m월")}</div>
-          <a class="calendar-nav-btn" href="?{next_query}">다음 달</a>
+        <div class="calendar-side">
+          <div class="calendar-mini-table">
+            <div><span>월</span><strong>{month_name}</strong></div>
+            <div><span>연도</span><strong>{year_name}</strong></div>
+            <div><span>시작 요일</span><strong>{start_weekday}</strong></div>
+          </div>
+          <div class="calendar-nav">
+            <a class="calendar-nav-btn" href="?{prev_query}">이전 달</a>
+            <a class="calendar-nav-btn" href="?{next_query}">다음 달</a>
+          </div>
         </div>
       </div>
       <div class="calendar-grid">
@@ -482,36 +488,66 @@ HTML_TEMPLATE = """
     .calendar-wrap {
       background: white;
       border: 1px solid var(--line);
-      border-radius: 1rem;
-      padding: 1rem;
+      border-radius: 1.15rem;
+      padding: 1.25rem 1.25rem 1rem;
       box-shadow: 0 10px 28px rgba(16, 37, 66, 0.04);
     }
     .calendar-head {
       display: flex;
       justify-content: space-between;
       gap: 1rem;
-      align-items: center;
-      margin-bottom: 0.75rem;
+      align-items: flex-start;
+      margin-bottom: 1rem;
       flex-wrap: wrap;
     }
-    .calendar-title {
-      font-size: 1.05rem;
+    .calendar-hero {
+      min-width: 14rem;
+    }
+    .calendar-month-label {
+      font-size: 2.1rem;
       font-weight: 900;
       color: var(--ink);
+      line-height: 1;
+    }
+    .calendar-year-label {
+      font-size: 4.6rem;
+      font-weight: 900;
+      color: #2f7f8f;
+      line-height: 0.95;
+      letter-spacing: -0.06em;
+      margin-top: 0.05rem;
     }
     .calendar-sub {
       color: var(--ink-soft);
       font-size: 0.92rem;
-      margin-top: 0.2rem;
+      margin-top: 0.6rem;
+      max-width: 34rem;
     }
-    .calendar-badge {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      padding: 0.4rem 0.85rem;
+    .calendar-side {
+      display: flex;
+      flex-direction: column;
+      gap: 0.8rem;
+      min-width: 16rem;
+      align-items: flex-end;
+    }
+    .calendar-mini-table {
+      display: grid;
+      gap: 0.55rem;
+      width: min(100%, 18rem);
+    }
+    .calendar-mini-table > div {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 0.35rem;
+    }
+    .calendar-mini-table span {
+      color: var(--ink-soft);
+    }
+    .calendar-mini-table strong {
       font-weight: 800;
-      color: var(--ink);
-      white-space: nowrap;
+      color: #2f7f8f;
     }
     .calendar-nav {
       display: flex;
@@ -539,42 +575,42 @@ HTML_TEMPLATE = """
     .calendar-grid {
       display: grid;
       grid-template-columns: repeat(7, minmax(0, 1fr));
-      gap: 0.45rem;
+      gap: 0;
     }
     .cal-weekday {
-      text-align: center;
-      font-size: 0.82rem;
+      text-align: left;
+      font-size: 1.05rem;
       font-weight: 800;
-      color: var(--ink-soft);
-      padding: 0.15rem 0;
+      color: var(--ink);
+      padding: 0.9rem 0.6rem 1rem;
+      border-bottom: 1px solid #9abac1;
     }
     .cal-cell {
-      min-height: 5.8rem;
-      border-radius: 0.85rem;
-      border: 1px solid var(--line);
-      background: #fbfdff;
-      padding: 0.45rem;
+      min-height: 6.1rem;
+      border-top: 1px solid #9abac1;
+      background: white;
+      padding: 0.3rem 0.3rem 0.4rem;
       position: relative;
       overflow: hidden;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
     }
     .cal-cell.empty {
-      background: transparent;
-      border: 1px dashed rgba(223, 231, 241, 0.75);
+      background: white;
     }
     .cal-bubble {
-      width: 2.65rem;
-      height: 2.65rem;
+      width: 2.35rem;
+      height: 2.35rem;
       border-radius: 999px;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 0.95rem;
+      font-size: 0.92rem;
       font-weight: 900;
       color: white;
-      box-shadow: 0 8px 16px rgba(16, 37, 66, 0.12);
+      box-shadow: 0 6px 12px rgba(16, 37, 66, 0.1);
+      margin-top: 0.25rem;
     }
     .status-buy {
       background: rgba(74, 222, 128, 0.12);
@@ -597,8 +633,17 @@ HTML_TEMPLATE = """
     .status-neutral .cal-bubble {
       background: #94a3b8;
     }
+    .outside-month .cal-bubble {
+      background: #d6dde6;
+      color: #8a97a7;
+      box-shadow: none;
+    }
+    .outside-month {
+      background: #fcfdff;
+    }
     .selected-day {
-      box-shadow: inset 0 0 0 2px var(--accent);
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
     }
     .today-day::after {
       content: "오늘";
