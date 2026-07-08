@@ -324,12 +324,52 @@ HTML_TEMPLATE = """
       box-shadow: 0 16px 40px rgba(16, 37, 66, 0.16);
     }
     .hero h1 {
-      font-size: clamp(1.8rem, 3vw, 2.7rem);
+      font-size: clamp(1.25rem, 2vw, 1.65rem);
       font-weight: 900;
+      line-height: 1.25;
+      margin-bottom: 0.65rem;
     }
     .hero p {
+      font-size: 0.98rem;
       line-height: 1.6;
       opacity: 0.96;
+    }
+    .hero-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.65rem;
+      margin-bottom: 0.9rem;
+    }
+    .hero-brand-mark {
+      width: 3.3rem;
+      height: 3.3rem;
+      border-radius: 1rem;
+      background: rgba(255, 255, 255, 0.16);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.9rem;
+      font-weight: 900;
+      line-height: 1;
+    }
+    .hero-brand-text {
+      display: flex;
+      flex-direction: column;
+    }
+    .hero-brand-name {
+      font-size: clamp(2rem, 4vw, 3.25rem);
+      font-weight: 900;
+      line-height: 0.95;
+      letter-spacing: -0.06em;
+    }
+    .hero-brand-sub {
+      font-size: 0.78rem;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.72);
+      margin-top: 0.15rem;
     }
     .panel {
       background: rgba(255, 255, 255, 0.94);
@@ -456,8 +496,14 @@ HTML_TEMPLATE = """
     <section class="hero p-4 p-lg-5 mb-4">
       <div class="row align-items-center g-3">
         <div class="col-lg-8">
-          <div class="text-uppercase text-white-50 fw-bold mb-2" style="letter-spacing: .04em;">YUTA MVP</div>
-          <h1 class="mb-3">원유가격 기반 일본행 발권 타이밍 참고 서비스</h1>
+          <div class="hero-brand">
+            <div class="hero-brand-mark">유</div>
+            <div class="hero-brand-text">
+              <div class="hero-brand-name">유타</div>
+              <div class="hero-brand-sub">futa</div>
+            </div>
+          </div>
+          <h1>원유가격 기반 일본행 발권 타이밍 참고 서비스</h1>
           <p class="mb-0">
             항공권 가격을 예측하지 않고, 오피넷 국제 원유가격 추이와 환율을 적용한 원화 기준으로
             일본행 항공권을 지금 살지, 조금 더 기다릴지 아주 단순하게 참고하는 도구입니다.
