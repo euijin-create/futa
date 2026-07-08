@@ -613,6 +613,20 @@ HTML_TEMPLATE = """
       </div>
     </section>
 
+    <section class="panel p-4 mb-4">
+      <div class="fw-bold mb-3">바로 예매 사이트로 이동</div>
+      <div class="row g-2">
+        {% for item in booking_sites %}
+        <div class="col-6 col-lg-4">
+          <a class="btn btn-outline-primary w-100 fw-bold" href="{{ item.url }}" target="_blank" rel="noopener noreferrer">
+            {{ item.label }}
+          </a>
+        </div>
+        {% endfor %}
+      </div>
+      <div class="small-help mt-3">원유가격 참고 후, 실제 항공권 검색은 아래 사이트에서 바로 이어서 할 수 있습니다.</div>
+    </section>
+
     <section class="panel p-4">
       <div class="fw-bold mb-2">주의</div>
       <ul class="mb-0">
@@ -736,6 +750,15 @@ def index():
     bar_fig.update_yaxes(tickprefix="₩", separatethousands=True)
     bar_chart = bar_fig.to_html(full_html=False, include_plotlyjs=False)
 
+    booking_sites = [
+        {"label": "네이버 항공권", "url": "https://flight.naver.com/"},
+        {"label": "스카이스캐너", "url": "https://www.skyscanner.co.kr/"},
+        {"label": "구글 항공권", "url": "https://www.google.com/travel/flights"},
+        {"label": "트립닷컴", "url": "https://kr.trip.com/flights/"},
+        {"label": "대한항공", "url": "https://www.koreanair.com/"},
+        {"label": "아시아나", "url": "https://flyasiana.com/"},
+    ]
+
     return render_template_string(
         HTML_TEMPLATE,
         destinations=JAPAN_DESTINATIONS,
@@ -757,6 +780,7 @@ def index():
         short_takeaway=short_takeaway,
         line_chart=line_chart,
         bar_chart=bar_chart,
+        booking_sites=booking_sites,
     )
 
 
