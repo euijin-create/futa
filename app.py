@@ -337,14 +337,15 @@ HTML_TEMPLATE = """
       z-index: 1;
     }
     .hero h1 {
-      font-size: clamp(1.18rem, 1.8vw, 1.45rem);
+      font-size: clamp(1.02rem, 1.4vw, 1.2rem);
       font-weight: 900;
       line-height: 1.28;
       margin-bottom: 0.45rem;
       letter-spacing: -0.03em;
+      max-width: 38rem;
     }
     .hero p {
-      font-size: 0.9rem;
+      font-size: 0.88rem;
       line-height: 1.6;
       opacity: 0.96;
       max-width: 38rem;
@@ -352,21 +353,22 @@ HTML_TEMPLATE = """
     .hero-brand {
       display: flex;
       align-items: center;
-      gap: 1rem;
+      gap: 0.9rem;
       margin-bottom: 0.8rem;
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
     }
     .hero-card {
-      width: min(100%, 28rem);
+      width: min(16rem, 42vw);
       background: rgba(255, 255, 255, 0.14);
       border: 1px solid rgba(255, 255, 255, 0.22);
       border-radius: 1.4rem;
-      padding: 1rem 1rem 0.9rem;
+      padding: 0.65rem;
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.18);
       backdrop-filter: blur(8px);
+      flex-shrink: 0;
     }
     .hero-illustration {
-      height: 9.2rem;
+      height: 7rem;
       border-radius: 1.1rem;
       background:
         radial-gradient(circle at 30% 25%, rgba(255,255,255,0.95) 0 7%, transparent 8%),
@@ -379,7 +381,7 @@ HTML_TEMPLATE = """
       content: "";
       position: absolute;
       left: 10%;
-      top: 16%;
+      top: 18%;
       width: 42%;
       height: 56%;
       border-radius: 999px;
@@ -388,11 +390,11 @@ HTML_TEMPLATE = """
       transform: rotate(-8deg);
     }
     .hero-illustration::after {
-      content: "?";
+      content: "✈";
       position: absolute;
       right: 12%;
       top: 24%;
-      font-size: 2.25rem;
+      font-size: 2rem;
       color: #ff7b3a;
       text-shadow: 0 2px 0 rgba(255,255,255,0.6);
       transform: rotate(12deg);
@@ -428,18 +430,17 @@ HTML_TEMPLATE = """
       flex-direction: column;
     }
     .hero-brand-name {
-      font-size: clamp(2.2rem, 4.5vw, 3.6rem);
+      font-size: clamp(2.4rem, 4.5vw, 4rem);
       font-weight: 900;
       line-height: 0.95;
       letter-spacing: -0.08em;
     }
     .hero-brand-sub {
-      font-size: 0.74rem;
+      font-size: 0.86rem;
       font-weight: 800;
-      letter-spacing: 0.16em;
-      text-transform: uppercase;
-      color: rgba(255, 255, 255, 0.74);
-      margin-top: 0.15rem;
+      letter-spacing: 0.02em;
+      color: rgba(255, 255, 255, 0.78);
+      margin-top: 0.2rem;
     }
     .panel {
       background: rgba(255, 255, 255, 0.94);
@@ -575,14 +576,14 @@ HTML_TEMPLATE = """
               </div>
             </div>
             <div class="hero-brand-text">
-              <div class="hero-brand-name">??</div>
-              <div class="hero-brand-sub">futa</div>
+              <div class="hero-brand-name">유타</div>
+              <div class="hero-brand-sub">원유가격 기반 일본행 발권 참고</div>
             </div>
           </div>
-          <h1>???? ?? ??? ?? ??? ?? ???</h1>
+          <h1>원유가격 기반 일본행 발권 타이밍 참고 서비스</h1>
           <p class="mb-0">
-            ??? ??? ???? ??, ??? ?? ???? ??? ??? ??? ?? ????
-            ??? ???? ?? ??, ?? ? ???? ?? ???? ???? ?????.
+            항공권 가격을 예측하지 않고, 오피넷 국제 원유가격 추이와 환율을 적용한 원화 기준으로
+            일본행 항공권을 지금 살지, 조금 더 기다릴지 아주 단순하게 참고하는 도구입니다.
           </p>
         </div>
         <div class="col-lg-4">
