@@ -12,9 +12,10 @@ from flask import Flask, render_template_string, request
 app = Flask(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent
-DATA_PATH = BASE_DIR / "data" / "oil_prices.csv"
-OIL_COLUMNS = ["dubai", "brent", "wti"]
+OIL_DATA_PATH = BASE_DIR / "data" / "oil_prices.csv"
+FX_DATA_PATH = BASE_DIR / "data" / "usd_krw.csv"
 
+OIL_COLUMNS = ["dubai", "brent", "wti"]
 SEOUL_COORDS = (37.5665, 126.9780)
 
 JAPAN_DESTINATIONS = {
@@ -28,8 +29,8 @@ JAPAN_DESTINATIONS = {
 
 
 @lru_cache(maxsize=1)
-def load_data() -> pd.DataFrame:
-    df = pd.read_csv(DATA_PATH)
+def load_oil_data() -> pd.DataFrame:
+    df = pd.read_csv(OIL_DATA_PATH)
     df.columns = [col.strip().lower() for col in df.columns]
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
 
@@ -39,6 +40,50 @@ def load_data() -> pd.DataFrame:
 
     df["all"] = df[OIL_COLUMNS].mean(axis=1, skipna=True)
     return df.dropna(subset=["date"]).sort_values("date").reset_index(drop=True)
+
+
+@lru_cache(maxsize=1)
+def load_fx_data() -> pd.DataFrame:
+    df = pd.read_csv(FX_DATA_PATH)
+    df.columns = [col.strip() for col in df.columns]
+
+    date_col = next((c for c in df.columns if "일자" in c or c.lower() == "date"), None)
+    rate_col = next((c for c in df.columns if "달러" in c or "usd" in c.lower()), None)
+
+    if date_col is None or rate_col is None:
+        raise ValueError("환율 CSV에서 날짜/환율 컬럼을 찾을 수 없습니다.")
+
+    fx = df[[date_col, rate_col]].rename(columns={date_col: "date", rate_col: "usd_krw"})
+    fx["date"] = pd.to_datetime(fx["date"], errors="coerce")
+    fx["usd_krw"] = (
+        fx["usd_krw"]
+        .astype(str)
+        .str.replace(",", "", regex=False)
+        .str.strip()
+    )
+    fx["usd_krw"] = pd.to_numeric(fx["usd_krw"], errors="coerce")
+    fx = fx.dropna(subset=["date", "usd_krw"]).sort_values("date").reset_index(drop=True)
+    return fx
+
+
+@lru_cache(maxsize=1)
+def load_merged_data() -> pd.DataFrame:
+    oil = load_oil_data()
+    fx = load_fx_data()
+    merged = pd.merge_asof(
+        oil.sort_values("date"),
+        fx.sort_values("date"),
+        on="date",
+        direction="backward",
+    )
+
+    if merged["usd_krw"].isna().any():
+        merged["usd_krw"] = merged["usd_krw"].ffill().bfill()
+
+    for col in OIL_COLUMNS + ["all"]:
+        merged[f"{col}_krw"] = merged[col] * merged["usd_krw"]
+
+    return merged
 
 
 def safe_date(value: str | None, fallback: date) -> date:
@@ -64,14 +109,11 @@ def destination_info(code: str):
     distance = haversine_km(SEOUL_COORDS[0], SEOUL_COORDS[1], info["lat"], info["lon"])
     if distance < 500:
         band = "가까운 편"
-        band_color = "badge-soft"
     elif distance < 1000:
         band = "보통"
-        band_color = "badge-soft"
     else:
         band = "먼 편"
-        band_color = "badge-soft"
-    return info, distance, band, band_color
+    return info, distance, band
 
 
 def summarize_period(df: pd.DataFrame, column: str, start_date: date, end_date: date):
@@ -85,13 +127,19 @@ def summarize_period(df: pd.DataFrame, column: str, start_date: date, end_date: 
     return float(period[column].mean()), period
 
 
-def format_price(value):
+def money(value: float | None):
     if value is None or pd.isna(value):
         return "-"
-    return f"{value:.2f}"
+    return f"₩{value:,.0f}"
 
 
-def format_change(value):
+def rate(value: float | None):
+    if value is None or pd.isna(value):
+        return "-"
+    return f"{value:,.0f}원"
+
+
+def pct(value: float | None):
     if value is None or pd.isna(value):
         return "-"
     sign = "+" if value > 0 else ""
@@ -103,7 +151,7 @@ def decision_from_change(percent_change):
         return {
             "label": "판단 보류",
             "tone": "neutral",
-            "headline": "데이터가 부족해서 지금은 판단을 보류합니다.",
+            "headline": "지금은 판단을 보류해도 됩니다.",
             "text": "선택한 기간에 데이터가 없거나 이전 기간 평균이 0이라 증감률을 계산할 수 없습니다.",
         }
     if percent_change > 3:
@@ -195,10 +243,11 @@ HTML_TEMPLATE = """
       font-weight: 700;
     }
     .kpi-value {
-      font-size: 1.9rem;
+      font-size: 1.85rem;
       font-weight: 900;
-      line-height: 1;
+      line-height: 1.1;
       color: var(--ink);
+      word-break: keep-all;
     }
     .kpi-sub {
       margin-top: 0.35rem;
@@ -238,7 +287,7 @@ HTML_TEMPLATE = """
       background: rgba(255,255,255,0.55);
     }
     .decision-title {
-      font-size: 1.85rem;
+      font-size: 1.8rem;
       font-weight: 900;
       margin-bottom: 0.35rem;
     }
@@ -285,11 +334,6 @@ HTML_TEMPLATE = """
       font-weight: 800;
       margin-bottom: 0.6rem;
     }
-    .badge-soft {
-      background: rgba(30, 95, 116, 0.1);
-      color: var(--accent);
-      border: 1px solid rgba(30, 95, 116, 0.18);
-    }
     .form-label {
       font-weight: 800;
     }
@@ -307,7 +351,7 @@ HTML_TEMPLATE = """
           <div class="text-uppercase text-white-50 fw-bold mb-2" style="letter-spacing: .04em;">YUTA MVP</div>
           <h1 class="mb-3">원유가격 기반 일본행 발권 타이밍 참고 서비스</h1>
           <p class="mb-0">
-            항공권 가격을 예측하지 않고, 오피넷 국제 원유가격 추이를 바탕으로
+            항공권 가격을 예측하지 않고, 오피넷 국제 원유가격 추이와 환율을 적용한 원화 기준으로
             일본행 항공권을 지금 살지, 조금 더 기다릴지 아주 단순하게 참고하는 도구입니다.
           </p>
         </div>
@@ -315,8 +359,8 @@ HTML_TEMPLATE = """
           <div class="bg-white text-dark rounded-4 p-3 p-lg-4 shadow-sm">
             <div class="fw-bold mb-2">아주 간단한 사용법</div>
             <div class="small text-secondary mb-1">1. 일본 목적지 선택</div>
-            <div class="small text-secondary mb-1">2. 기준일 1개 선택</div>
-            <div class="small text-secondary">3. 비교 기간만 고르면 끝</div>
+            <div class="small text-secondary mb-1">2. 기준일 1개만 선택</div>
+            <div class="small text-secondary">3. 최근 기간은 자동 비교</div>
           </div>
         </div>
       </div>
@@ -333,7 +377,7 @@ HTML_TEMPLATE = """
             </option>
             {% endfor %}
           </select>
-          <div class="small-help mt-2">거리비례 구간제 관점으로 목적지 정보를 함께 보여줍니다.</div>
+          <div class="small-help mt-2">가고 싶은 도시만 고르면 됩니다.</div>
         </div>
         <div class="col-lg-3 col-md-6">
           <label class="form-label" for="as_of">기준일</label>
@@ -375,7 +419,7 @@ HTML_TEMPLATE = """
         <div class="col-md-4">
           <div class="mini-step">
             <div class="step-num">3</div>
-            <div class="fw-bold mb-1">기간은 보통 30일 추천</div>
+            <div class="fw-bold mb-1">처음엔 최근 30일 추천</div>
             <div class="text-secondary">처음엔 최근 30일로 보면 가장 이해하기 쉽습니다. 더 짧게도 바꿀 수 있습니다.</div>
           </div>
         </div>
@@ -398,11 +442,11 @@ HTML_TEMPLATE = """
           </div>
           <div class="col-md-4">
             <div class="fw-bold">이전 기간 평균</div>
-            <div style="font-size: 1.7rem; font-weight: 900;">{{ previous_avg_display }}달러</div>
+            <div style="font-size: 1.7rem; font-weight: 900;">{{ previous_avg_display }}</div>
           </div>
           <div class="col-md-4">
             <div class="fw-bold">최근 기간 평균</div>
-            <div style="font-size: 1.7rem; font-weight: 900;">{{ recent_avg_display }}달러</div>
+            <div style="font-size: 1.7rem; font-weight: 900;">{{ recent_avg_display }}</div>
           </div>
         </div>
       </div>
@@ -426,16 +470,16 @@ HTML_TEMPLATE = """
         </div>
         <div class="col-md-6 col-xl-3">
           <div class="kpi">
-            <div class="kpi-label">이전 기간 평균</div>
-            <div class="kpi-value">{{ previous_avg_display }}</div>
-            <div class="kpi-sub">달러</div>
+            <div class="kpi-label">최근 환율</div>
+            <div class="kpi-value" style="font-size: 1.6rem;">{{ fx_rate }}</div>
+            <div class="kpi-sub">1달러 = 원화</div>
           </div>
         </div>
         <div class="col-md-6 col-xl-3">
           <div class="kpi">
-            <div class="kpi-label">최근 기간 평균</div>
-            <div class="kpi-value">{{ recent_avg_display }}</div>
-            <div class="kpi-sub">달러</div>
+            <div class="kpi-label">기준 화폐</div>
+            <div class="kpi-value" style="font-size: 1.6rem;">원화 표시</div>
+            <div class="kpi-sub">환율 적용 완료</div>
           </div>
         </div>
       </div>
@@ -444,7 +488,7 @@ HTML_TEMPLATE = """
     <section class="mb-4">
       <div class="section-title">짧은 설명</div>
       <div class="hint-box">
-        <div class="fw-bold mb-1">이전 기간 평균 원유가격은 {{ previous_avg_display }}달러, 최근 기간 평균 원유가격은 {{ recent_avg_display }}달러입니다.</div>
+        <div class="fw-bold mb-1">이전 기간 평균 원유가격은 {{ previous_avg_display }}, 최근 기간 평균 원유가격은 {{ recent_avg_display }}입니다.</div>
         <div class="mb-1">최근 기간은 이전 기간 대비 {{ change_sentence }}.</div>
         <div>따라서 원유가격 기준으로는 {{ short_takeaway }}로 참고할 수 있습니다.</div>
       </div>
@@ -477,13 +521,12 @@ HTML_TEMPLATE = """
 
 @app.route("/")
 def index():
-    df = load_data()
+    df = load_merged_data()
     if df.empty:
         return "원유가격 데이터가 비어 있습니다.", 500
 
     min_date = df["date"].dt.date.min()
     max_date = df["date"].dt.date.max()
-
     default_as_of = max_date
     default_window_days = 30
 
@@ -500,11 +543,11 @@ def index():
         selected_window_days = default_window_days
 
     recent_end = min(as_of, max_date)
-    recent_start = recent_end - timedelta(days=selected_window_days - 1)
-    previous_end = recent_start - timedelta(days=1)
-    previous_start = previous_end - timedelta(days=selected_window_days - 1)
+    recent_start = max(min_date, recent_end - timedelta(days=selected_window_days - 1))
+    previous_end = max(min_date, recent_start - timedelta(days=1))
+    previous_start = max(min_date, previous_end - timedelta(days=selected_window_days - 1))
 
-    selected_col = "all"
+    selected_col = "all_krw"
     previous_avg, previous_period = summarize_period(df, selected_col, previous_start, previous_end)
     recent_avg, recent_period = summarize_period(df, selected_col, recent_start, recent_end)
 
@@ -512,12 +555,9 @@ def index():
     if previous_period.empty or recent_period.empty:
         no_data_warning = "해당 기간의 원유가격 데이터가 없습니다."
 
-    diff = None
     percent_change = None
-    if previous_avg is not None and recent_avg is not None:
-        diff = recent_avg - previous_avg
-        if previous_avg != 0:
-            percent_change = diff / previous_avg * 100
+    if previous_avg is not None and recent_avg is not None and previous_avg != 0:
+        percent_change = (recent_avg - previous_avg) / previous_avg * 100
 
     decision = decision_from_change(percent_change)
 
@@ -534,21 +574,30 @@ def index():
         change_sentence = "거의 변동이 없습니다"
         short_takeaway = "발권 시점 차이가 크지 않은 쪽"
 
-    destination, distance_km, distance_band, _ = destination_info(selected_destination)
-    destination_label = destination["label"]
-    destination_sub = destination["sub"]
+    destination, distance_km, distance_band = destination_info(selected_destination)
 
-    line_df = df.melt(id_vars="date", value_vars=OIL_COLUMNS, var_name="원유", value_name="가격").dropna(subset=["가격"])
-    line_df["원유"] = line_df["원유"].str.upper()
+    fx_rate = None
+    if not df["usd_krw"].dropna().empty:
+        fx_rate = float(df["usd_krw"].dropna().iloc[-1])
+
+    line_df = df.melt(
+        id_vars=["date", "usd_krw"],
+        value_vars=["dubai_krw", "brent_krw", "wti_krw"],
+        var_name="원유",
+        value_name="가격",
+    ).dropna(subset=["가격"])
+    line_df["원유"] = line_df["원유"].str.replace("_krw", "", regex=False).str.upper()
+
     line_fig = px.line(
         line_df,
         x="date",
         y="가격",
         color="원유",
         markers=True,
-        title="날짜별 Dubai, Brent, WTI 원유가격 추이",
+        title="날짜별 Dubai, Brent, WTI 원유가격 추이(원화 기준)",
     )
     line_fig.update_layout(legend_title_text="", hovermode="x unified", margin=dict(l=10, r=10, t=60, b=10))
+    line_fig.update_yaxes(tickprefix="₩", separatethousands=True)
     line_chart = line_fig.to_html(full_html=False, include_plotlyjs="cdn")
 
     bar_values = pd.DataFrame(
@@ -563,11 +612,12 @@ def index():
         y="평균 가격",
         text="평균 가격",
         color="기간",
-        title=f"전체 평균 원유가격 비교",
+        title="전체 평균 원유가격 비교(원화 기준)",
         color_discrete_map={"이전 기간": "#8da0cb", "최근 기간": "#66c2a5"},
     )
-    bar_fig.update_traces(texttemplate="%{text:.2f}", textposition="outside")
-    bar_fig.update_layout(showlegend=False, yaxis_title="달러", margin=dict(l=10, r=10, t=60, b=10))
+    bar_fig.update_traces(texttemplate="₩%{text:,.0f}", textposition="outside")
+    bar_fig.update_layout(showlegend=False, yaxis_title="원", margin=dict(l=10, r=10, t=60, b=10))
+    bar_fig.update_yaxes(tickprefix="₩", separatethousands=True)
     bar_chart = bar_fig.to_html(full_html=False, include_plotlyjs=False)
 
     return render_template_string(
@@ -579,13 +629,14 @@ def index():
         selected_window_days=selected_window_days,
         no_data_warning=no_data_warning,
         decision=decision,
-        previous_avg_display=format_price(previous_avg),
-        recent_avg_display=format_price(recent_avg),
-        percent_display=format_change(percent_change),
-        destination_label=destination_label,
-        destination_sub=destination_sub,
+        previous_avg_display=money(previous_avg),
+        recent_avg_display=money(recent_avg),
+        percent_display=pct(percent_change),
+        destination_label=destination["label"],
+        destination_sub=destination["sub"],
         distance_km=f"{distance_km:.0f}",
         distance_band=distance_band,
+        fx_rate=rate(fx_rate),
         change_sentence=change_sentence,
         short_takeaway=short_takeaway,
         line_chart=line_chart,
